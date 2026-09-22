@@ -9,8 +9,8 @@ def hash_api_key(raw:str)->str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 def main()->None:
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    #Base.metadata.drop_all(bind=engine)
+    #Base.metadata.create_all(bind=engine)
     print("1建表完成")
 
     with SessionLocal() as db:

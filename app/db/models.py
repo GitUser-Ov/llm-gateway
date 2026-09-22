@@ -42,6 +42,7 @@ class Conversation(Base):
         )
 
     title:Mapped[str]=mapped_column(String(200),default="新对话",nullable=False)
+    digest:Mapped[str]=mapped_column(String(500),default="",nullable=False)
     created_at:Mapped[datetime]=mapped_column(
         DateTime(timezone=True),server_default=func.now(),nullable=False
         )
