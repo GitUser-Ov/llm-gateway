@@ -4,6 +4,12 @@ from fastapi import Depends
 
 from app.core.config import Settings,get_settings
 
+from collections.abc import Iterator
+
+from sqlalchemy.orm import Session
+
+from app.db.base import SessionLocal
+
 SettingsDep=Annotated[Settings,Depends(get_settings)]
 
 class FakeResource:
@@ -30,4 +36,19 @@ def get_current_user_lite(settings:SettingsDep)->CurrentUserLite:
     name="anonymous" if settings.debug else "unknown"
     return CurrentUserLite(name=name)
 
-CurrentUserLiteDep=Annotated[CurrentUserLite,Depends(get_current_user_lite)]
+CurrentUserLiteDep=Annotated[CurrentUserLite,Depends(get_current_user_lite)]\
+
+def get_db()->Iterator[Session]:
+    db=SessionLocal()
+    try:
+        yield db
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+DbDep=Annotated[Session,Depends(get_db)]
+
+
+
