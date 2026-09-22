@@ -1,6 +1,5 @@
 from pydantic import BaseModel,Field
 
-
 class ChatRequest(BaseModel):
     question:str=Field(
     ...,
@@ -9,7 +8,7 @@ class ChatRequest(BaseModel):
     description="用户的问题",
     examples=["缓考怎么申请"],
     )
-
+    conversation_id:int|None=Field(None,description="会话id：不传则自动新建一个会话")
     temperature:float=Field(
     0.7,
     ge=0.0,
@@ -18,6 +17,8 @@ class ChatRequest(BaseModel):
     )
 
 class ChatResponse(BaseModel):
+    conversation_id:int=Field(description="所属会话id")
+    message_id:int=Field(description="本次助手消息的id")
     answer:str=Field(description="模型的回答")
     model:str=Field(description="实际使用的模型名")
 

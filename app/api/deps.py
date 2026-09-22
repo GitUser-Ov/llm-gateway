@@ -1,45 +1,20 @@
-from typing import Annotated,Iterator
-
-from fastapi import Depends
-
-from app.core.config import Settings,get_settings
-
+"""依赖注入中心。"""
 from collections.abc import Iterator
-
+from typing import Annotated
+from fastapi import Depends, Header
+from sqlalchemy import select
 from sqlalchemy.orm import Session
-
+from app.core.config import Settings, get_settings
+from app.core.errors import AuthError
+from app.core.security import hash_api_key
 from app.db.base import SessionLocal
+from app.db.models import User
 
-SettingsDep=Annotated[Settings,Depends(get_settings)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
-class FakeResource:
-    def __init__(self)->None:
-        self.opened=True
-
-    def close(self)->None:
-        self.opened=False
-
-def get_fake_resource()->Iterator[FakeResource]:
-    res=FakeResource()
-    try:
-        yield res
-    finally:
-        res.close()
-
-FakeResourceDep=Annotated[FakeResource,Depends(get_fake_resource)]
-
-class CurrentUserLite:
-    def __init__(self,name:str)->None:
-        self.name=name
-
-def get_current_user_lite(settings:SettingsDep)->CurrentUserLite:
-    name="anonymous" if settings.debug else "unknown"
-    return CurrentUserLite(name=name)
-
-CurrentUserLiteDep=Annotated[CurrentUserLite,Depends(get_current_user_lite)]\
-
-def get_db()->Iterator[Session]:
-    db=SessionLocal()
+def get_db() -> Iterator[Session]:
+    """每个请求一个 Session，请求结束自动关闭。"""
+    db = SessionLocal()
     try:
         yield db
     except Exception:
@@ -48,7 +23,20 @@ def get_db()->Iterator[Session]:
     finally:
         db.close()
 
-DbDep=Annotated[Session,Depends(get_db)]
+DbDep = Annotated[Session, Depends(get_db)]
 
+def get_current_user(
+    db: DbDep,
+    api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> User:
+    """从 X-API-Key 请求头解析出当前用户。"""
+    if not api_key:
+        raise AuthError("缺少 X-API-Key 请求头")
+    user = db.scalar(select(User).where(User.api_key_hash == hash_api_key(api_key)))
+    if user is None:
+        raise AuthError("API Key 无效")
+    if not user.is_active:
+        raise AuthError("该账号已被禁用")
+    return user
 
-
+CurrentUserDep = Annotated[User, Depends(get_current_user)]
