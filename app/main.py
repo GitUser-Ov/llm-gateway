@@ -6,7 +6,14 @@ from app.core.config import get_settings
 
 from app.core.handlers import register_exception_handlers
 
+from app.core.logging import setup_logging
+
+from app.core.middleware import RequestContextMiddleware
+
 settings=get_settings()
+
+setup_logging(level=settings.log_level,json_output=settings.is_prod)
+
 
 app=FastAPI(
     title="Campus AI服务",
@@ -14,8 +21,8 @@ app=FastAPI(
     description="校园知识助手---后端服务（进阶一）",
 )
 
+app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)
-
 app.include_router(api_router)
 
 
