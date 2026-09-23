@@ -10,6 +10,14 @@ from app.core.logging import setup_logging
 
 from app.core.middleware import RequestContextMiddleware
 
+from pathlib import Path
+
+from fastapi.staticfiles import StaticFiles
+
+from app.core.config import BASE_DIR
+
+
+
 settings=get_settings()
 
 setup_logging(level=settings.log_level,json_output=settings.is_prod)
@@ -24,5 +32,8 @@ app=FastAPI(
 app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)
 app.include_router(api_router)
+WEB_DIR=Path(BASE_DIR)/"web"
+if WEB_DIR.exists():
+    app.mount("/static",StaticFiles(directory=str(WEB_DIR)),name="static")
 
 

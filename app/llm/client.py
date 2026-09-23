@@ -1,3 +1,5 @@
+
+
 from openai import OpenAI
 from app.core.config import get_settings
 
@@ -23,3 +25,21 @@ def chat(messages:list[dict],temperature:float=0.7)->str:
     )
 
     return resp.choices[0].message.content or ""
+
+def stream_chat(messages:list[dict],temperature:float=0.7):
+    stream=get_client().chat.completions.create(
+        model=settings.llm_model,
+        messages=messages,
+        temperature=temperature,
+        stream=True
+    )
+
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta=chunk.choices[0].delta
+        content=getattr(delta,"content",None)
+        if content:
+            yield content
+
+            

@@ -7,6 +7,7 @@ from app.db.models import Conversation,Message,User
 from app.services.conversation_service import make_title
 from datetime import datetime, timezone
 import logging
+from app.db.base import SessionLocal
 logger=logging.getLogger(__name__)
 
 MAX_CONTEXT_MESSAGES=20
@@ -76,3 +77,44 @@ def answer_once(question:str,temperature:float=0.7)->str:
 
     return llm.chat(messages,temperature=temperature)
 
+def prepare_turn(
+    db:Session,
+    user:User,
+    question:str,
+    conversation_id:int|None=None,
+)->tuple[int,list[dict]]:
+    question=(question or "").strip()
+    if not question:
+        raise BadRequestError("问题不能为空")
+    if conversation_id is None:
+        conv=Conversation(user_id=user.id,title=make_title(question))
+        db.add(conv)
+        db.flush()
+        conv_id=conv.id
+    else:
+        conv=db.get(Conversation,conversation_id)
+        if conv is None or conv.user_id!=user.id:
+            from app.core.errors import NotFoundError
+            raise NotFoundError("会话不存在")
+        conv_id=conv.id
+
+    user_msg=Message(conversation_id=conv_id,role="user",content=question)
+    db.add(user_msg)
+    conv.updated_at=datetime.now(timezone.utc)
+    db.commit()
+
+    history=build_context(db,conv_id)
+    messages=[{"role":"system","content":SYSTEM_PROMPT},*history]
+    return conv_id,messages
+
+def persist_assistant_message(conversation_id:int,content:str)->int:
+    with SessionLocal() as db:
+        msg=Message(conversation_id=conversation_id,role="assistant",content=content)
+        db.add(msg)
+        conv=db.get(Conversation,conversation_id)
+        if conv is not None:
+            conv.updated_at=datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(msg)
+        return msg.id
+    
