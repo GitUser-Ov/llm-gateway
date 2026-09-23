@@ -54,7 +54,7 @@ class Conversation(Base):
     )
 
     user:Mapped["User"]=relationship(back_populates="conversations")
-    message:Mapped[list["Message"]]=relationship(
+    messages:Mapped[list["Message"]]=relationship(
         back_populates="conversation",
         cascade="all,delete-orphan",
         order_by="Message.id"
@@ -77,7 +77,7 @@ class Message(Base):
         DateTime(timezone=True),server_default=func.now(),nullable=False
         )
 
-    conversation:Mapped["Conversation"]=relationship(back_populates="message")
+    conversation:Mapped["Conversation"]=relationship(back_populates="messages")
 
     __table_args__=(
         Index("ix_messages__conversation_id_id","conversation_id","id"),

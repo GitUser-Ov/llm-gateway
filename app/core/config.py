@@ -22,8 +22,14 @@ class Settings(BaseSettings):
     deepseek_base_url:str="https://api.deepseek.com"
     llm_model:str="deepseek-chat"
     llm_timeout_seconds:float=30.0
+    llm_max_retries:int=2
+    llm_retry_base_delay:float=0.5
+    llm_fallback_message:str="抱歉，模型服务暂时不可用，请稍后重试"
 
     database_url:str="postgresql+psycopg://campus:campus_pwd@localhost:5432/campus"
+    db_pool_size:int=5
+    db_max_overflow:int=10
+    
     redis_url:str="redis://localhost:6379/0"
     answer_cache_ttl:int=3600
 

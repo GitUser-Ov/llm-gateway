@@ -1,120 +1,125 @@
+"""业务层：把"回答一个问题"这件事完整做一遍（异步版）。"""
+import logging
+from datetime import datetime, timezone
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import get_settings
+from app.core.errors import BadRequestError, NotFoundError, UpstreamError
+from app.db.base import SessionLocal
+from app.db.models import Conversation, Message, User
 from app.llm import client as llm
 from app.llm.prompts import SYSTEM_PROMPT
-from app.core.errors import BadRequestError
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-from app.db.models import Conversation,Message,User
 from app.services.conversation_service import make_title
-from datetime import datetime, timezone
-import logging
-from app.db.base import SessionLocal
-logger=logging.getLogger(__name__)
 
-MAX_CONTEXT_MESSAGES=20
+logger = logging.getLogger(__name__)
+settings = get_settings()
+MAX_CONTEXT_MESSAGES = 20
 
-def build_context(db:Session,conversation_id:int,limit:int=MAX_CONTEXT_MESSAGES)->list[dict]:
-    stmt=(
+async def build_context(
+    db: AsyncSession, conversation_id: int, limit: int = MAX_CONTEXT_MESSAGES
+) -> list[dict]:
+    """取出最近 limit 条消息，转成模型要的格式。"""
+    stmt = (
         select(Message)
-        .where(Message.conversation_id==conversation_id)
+        .where(Message.conversation_id == conversation_id)
         .order_by(Message.id.desc())
         .limit(limit)
     )
+    rows = list(reversed((await db.scalars(stmt)).all()))
+    return [{"role": m.role, "content": m.content} for m in rows]
 
-    rows=list(reversed(db.scalars(stmt).all()))
-    return [{"role":m.role,"content":m.content} for m in rows]
-
-def answer_in_conversation(
-    db:Session,
-    user:User,
-    question:str,
-    conversation_id:int|None=None,
-    temperature:float=0.7
-)->tuple[Conversation,Message]:
-    question=(question or "").strip()
-    if not question:
-        raise BadRequestError("问题不能为空")
-
+async def _resolve_conversation(
+    db: AsyncSession, user: User, question: str, conversation_id: int | None
+) -> Conversation:
+    """找到或新建会话。"""
     if conversation_id is None:
-        conv=Conversation(user_id=user.id,title=make_title(question))
+        conv = Conversation(user_id=user.id, title=make_title(question))
         db.add(conv)
-        db.flush()
-    else:
-        conv=db.get(Conversation,conversation_id)
-        if conv is None or conv.user_id!=user.id:
-            from app.core.errors import NotFoundError
-            raise NotFoundError("会话不存在")
+        await db.flush()             # 拿到 id，但还没提交
+        return conv
+    conv = await db.get(Conversation, conversation_id)
+    if conv is None or conv.user_id != user.id:
+        raise NotFoundError("会话不存在")
+    return conv
 
-    user_msg=Message(conversation_id=conv.id,role="user",content=question)
+async def answer_in_conversation(
+    db: AsyncSession,
+    user: User,
+    question: str,
+    conversation_id: int | None = None,
+    temperature: float = 0.7,
+) -> tuple[Conversation, Message]:
+    """非流式问答：一个事务里做完所有数据库操作。"""
+    question = (question or "").strip()
+    if not question:
+        raise BadRequestError("问题内容不能为空")
+    conv = await _resolve_conversation(db, user, question, conversation_id)
+    user_msg = Message(conversation_id=conv.id, role="user", content=question)
     db.add(user_msg)
-    db.flush()
-
-    history=build_context(db,conv.id)
-    messages=[{"role":"system","content":SYSTEM_PROMPT},*history]
-    logger.info(
-        "调用模型",extra={"extra_fields":{"conversation_id":conv.id,"ctx_msgs":len(messages)}}
-    )
-
-    answer=llm.chat(messages,temperature=temperature)
-
-    assistant_msg=Message(conversation_id=conv.id,role="assistant",content=answer)
+    await db.flush()
+    history = await build_context(db, conv.id)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    # ★ 模型调用失败时，用降级文案顶上，而不是把 502 甩给用户
+    try:
+        answer = await llm.chat(messages, temperature=temperature)
+        degraded = False
+    except UpstreamError:
+        logger.exception("模型调用失败，启用降级文案 conversation_id=%s", conv.id)
+        answer = settings.llm_fallback_message
+        degraded = True
+    assistant_msg = Message(conversation_id=conv.id, role="assistant", content=answer)
     db.add(assistant_msg)
-    conv.updated_at=datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(assistant_msg)
-    db.refresh(conv)
-    return conv,assistant_msg
+    conv.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(assistant_msg)
+    await db.refresh(conv)
+    if degraded:
+        logger.warning("本次回答为降级结果 conversation_id=%s", conv.id)
+    return conv, assistant_msg
 
-def answer_once(question:str,temperature:float=0.7)->str:
-    question=(question or "").strip()
-    logger.info("开始处理问题，长度%d",len(question))
+# ---------------------------------------------------------------
+# 流式问答：把"准备"和"输出"切开
+# ---------------------------------------------------------------
+async def prepare_turn(
+    db: AsyncSession, user: User, question: str, conversation_id: int | None = None
+) -> tuple[int, list[dict]]:
+    """流式问答的第一步：同步完成所有数据库操作，返回 (会话 id, messages)。"""
+    question = (question or "").strip()
     if not question:
-        raise BadRequestError("问题不能为空")
-
-    messages=[
-        {"role":"system","content":SYSTEM_PROMPT},
-        {"role":"user","content":question},
-    ]
-
-    return llm.chat(messages,temperature=temperature)
-
-def prepare_turn(
-    db:Session,
-    user:User,
-    question:str,
-    conversation_id:int|None=None,
-)->tuple[int,list[dict]]:
-    question=(question or "").strip()
-    if not question:
-        raise BadRequestError("问题不能为空")
-    if conversation_id is None:
-        conv=Conversation(user_id=user.id,title=make_title(question))
-        db.add(conv)
-        db.flush()
-        conv_id=conv.id
-    else:
-        conv=db.get(Conversation,conversation_id)
-        if conv is None or conv.user_id!=user.id:
-            from app.core.errors import NotFoundError
-            raise NotFoundError("会话不存在")
-        conv_id=conv.id
-
-    user_msg=Message(conversation_id=conv_id,role="user",content=question)
+        raise BadRequestError("问题内容不能为空")
+    conv = await _resolve_conversation(db, user, question, conversation_id)
+    user_msg = Message(conversation_id=conv.id, role="user", content=question)
     db.add(user_msg)
-    conv.updated_at=datetime.now(timezone.utc)
-    db.commit()
+    conv.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    history = await build_context(db, conv.id)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    return conv.id, messages
 
-    history=build_context(db,conv_id)
-    messages=[{"role":"system","content":SYSTEM_PROMPT},*history]
-    return conv_id,messages
-
-def persist_assistant_message(conversation_id:int,content:str)->int:
-    with SessionLocal() as db:
-        msg=Message(conversation_id=conversation_id,role="assistant",content=content)
+async def persist_assistant_message(conversation_id: int, content: str) -> int:
+    """流结束后，用一个独立的短会话把回答写进数据库。返回消息 id。"""
+    async with SessionLocal() as db:
+        msg = Message(conversation_id=conversation_id, role="assistant", content=content)
         db.add(msg)
-        conv=db.get(Conversation,conversation_id)
+        conv = await db.get(Conversation, conversation_id)
         if conv is not None:
-            conv.updated_at=datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(msg)
+            conv.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(msg)
         return msg.id
-    
+
+async def stream_answer(
+    conv_id: int, messages: list[dict], temperature: float
+):
+    """流式生成器：逐段产出 SSE 需要的文本增量。
+    这个生成器**只负责模型调用和降级**，SSE 的包装在 api 层做。
+    """
+    try:
+        async for delta in llm.stream_chat(messages, temperature=temperature):
+            yield delta
+    except UpstreamError:
+        logger.exception("流式调用失败，启用降级文案 conversation_id=%s", conv_id)
+        # 把降级文案也"流"出去，前端体验一致
+        for ch in settings.llm_fallback_message:
+            yield ch
+        raise          # 让上层知道发生过失败（用于记录/标记）
