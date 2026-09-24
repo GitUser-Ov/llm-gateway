@@ -17,9 +17,12 @@ class ChatRequest(BaseModel):
     )
 
 class ChatResponse(BaseModel):
-    conversation_id:int=Field(description="所属会话id")
-    message_id:int=Field(description="本次助手消息的id")
-    answer:str=Field(description="模型的回答")
-    model:str=Field(description="实际使用的模型名")
+    conversation_id:int
+    message_id:int
+    answer:str
+    model:str
+    from_cache:bool=Field(False,description="本次回答是否来自缓存")
+
+    
 
 

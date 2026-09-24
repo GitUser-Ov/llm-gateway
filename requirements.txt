@@ -16,3 +16,5 @@ psycopg[binary]>=3.2
 sqlalchemy[asyncio]>=2.0
 greenlet>=3.0
 anyio>=4.0
+
+redis>=5.0

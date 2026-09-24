@@ -17,17 +17,18 @@ router = APIRouter(prefix="/chat", tags=["聊天"])
 async def chat(
     req: ChatRequest, db: DbDep, user: CurrentUserDep, settings: SettingsDep
 ) -> ChatResponse:
-    conv, assistant_msg = await svc.answer_in_conversation(
+    result = await svc.answer_in_conversation(
         db, user,
         question=req.question,
         conversation_id=req.conversation_id,
         temperature=req.temperature,
     )
     return ChatResponse(
-        conversation_id=conv.id,
-        message_id=assistant_msg.id,
-        answer=assistant_msg.content,
+        conversation_id=result.conversation.id,
+        message_id=result.message.id,
+        answer=result.message.content,
         model=settings.llm_model,
+        from_cache=result.from_cache
     )
 
 def sse(payload: dict) -> str:

@@ -10,6 +10,10 @@ from app.db.models import Conversation, Message, User
 from app.llm import client as llm
 from app.llm.prompts import SYSTEM_PROMPT
 from app.services.conversation_service import make_title
+from app.cache import answer_cache
+from app.cache.redis_client import get_redis
+from dataclasses import dataclass
+
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -48,6 +52,7 @@ async def answer_in_conversation(
     question: str,
     conversation_id: int | None = None,
     temperature: float = 0.7,
+    use_cache:bool=True,
 ) -> tuple[Conversation, Message]:
     """非流式问答：一个事务里做完所有数据库操作。"""
     question = (question or "").strip()
@@ -59,23 +64,50 @@ async def answer_in_conversation(
     await db.flush()
     history = await build_context(db, conv.id)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    redis=get_redis()
+    cached:str|None=None
+    if use_cache:
+        cached=await answer_cache.get_answer(
+            redis,messages,settings.llm_model,temperature
+        )
+
+    if cached is not None:
+        answer=cached
+        degraded=False
+        from_cache=True
+    else:
+        from_cache=False
+        
     # ★ 模型调用失败时，用降级文案顶上，而不是把 502 甩给用户
-    try:
-        answer = await llm.chat(messages, temperature=temperature)
-        degraded = False
-    except UpstreamError:
-        logger.exception("模型调用失败，启用降级文案 conversation_id=%s", conv.id)
-        answer = settings.llm_fallback_message
-        degraded = True
+        try:
+            answer = await llm.chat(messages, temperature=temperature)
+            degraded = False
+        except UpstreamError:
+            logger.exception("模型调用失败，启用降级文案 conversation_id=%s", conv.id)
+            answer = settings.llm_fallback_message
+            degraded = True
+        if use_cache and not degraded:
+            await answer_cache.set_answer(
+                redis,messages,settings.llm_model,temperature,answer
+            )
     assistant_msg = Message(conversation_id=conv.id, role="assistant", content=answer)
     db.add(assistant_msg)
     conv.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(assistant_msg)
     await db.refresh(conv)
+    logger.info(
+        "问答完成",
+        extra={"extra_fields":{"conversation_id":conv.id,"from_cache":from_cache,"degraded":degraded}},
+    )
     if degraded:
         logger.warning("本次回答为降级结果 conversation_id=%s", conv.id)
-    return conv, assistant_msg
+    return AnswerResult(
+        conversation=conv,
+        message=assistant_msg,
+        from_cache=from_cache,
+        degraded=degraded
+    )
 
 # ---------------------------------------------------------------
 # 流式问答：把"准备"和"输出"切开
@@ -123,3 +155,10 @@ async def stream_answer(
         for ch in settings.llm_fallback_message:
             yield ch
         raise          # 让上层知道发生过失败（用于记录/标记）
+
+@dataclass
+class AnswerResult:
+    conversation:Conversation
+    message:Message
+    from_cache:bool=False
+    degraded:bool=False

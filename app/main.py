@@ -1,3 +1,11 @@
+import asyncio
+import sys
+
+if sys.platform=="win32":
+    def win_loop_factory(use_subprocess:bool=False):
+        return asyncio.SelectorEventLoop()
+
+
 from fastapi import FastAPI
 
 from app.api.v1.router import api_router
@@ -15,8 +23,6 @@ from app.db.base import engine
 from pathlib import Path
 
 from fastapi.staticfiles import StaticFiles
-
-from app.core.config import BASE_DIR
 
 from contextlib import asynccontextmanager
 
