@@ -8,6 +8,7 @@ from app.api.deps import CurrentUserDep, DbDep, SettingsDep
 from app.core.errors import UpstreamError
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services import chat_service as svc
+from app.api.deps import CurrentUserDep,DbDep,RateLimitDep,QuotaDep,SettingsDep
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/chat", tags=["聊天"])
 
 @router.post("", response_model=ChatResponse, summary="单轮问答（非流式）")
 async def chat(
-    req: ChatRequest, db: DbDep, user: CurrentUserDep, settings: SettingsDep
+    req: ChatRequest, db: DbDep, user: CurrentUserDep, settings: SettingsDep,_rl:RateLimitDep,_quota:QuotaDep,
 ) -> ChatResponse:
     result = await svc.answer_in_conversation(
         db, user,
@@ -76,7 +77,7 @@ async def stream_generator(
     })
 
 @router.post("/stream", summary="流式问答（SSE）")
-async def chat_stream(req: ChatRequest, db: DbDep, user: CurrentUserDep) -> StreamingResponse:
+async def chat_stream(req: ChatRequest, db: DbDep, user: CurrentUserDep,_rl:RateLimitDep,_quota:QuotaDep) -> StreamingResponse:
     # ★ 所有可能失败的检查都在流开始前做完（这时还能返回正常的 4xx）
     conv_id, messages = await svc.prepare_turn(
         db, user, question=req.question, conversation_id=req.conversation_id

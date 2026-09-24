@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     answer_cache_ttl:int=3600
 
     rate_limit_per_minute:int=20
+    daily_quota:int=300
 
     cors_origins:str="*"
 
