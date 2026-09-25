@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>校园知识助手</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #fff; --line: #e5e7eb;
+    --primary: #2563eb; --user-bg: #2563eb; --ai-bg: #fff;
+    --text: #1f2937; --muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; font-family: system-ui, "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 15px;
+  }
+ 
+  /* ---------- 左侧 ---------- */
+  #sidebar {
+    width: 260px; flex: none; background: var(--panel);
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column;
+  }
+  #sidebar h1 { font-size: 16px; margin: 16px; }
+  #new-conv {
+    margin: 0 12px 12px; padding: 10px; border: 1px dashed var(--line);
+    background: #fff; border-radius: 8px; cursor: pointer; color: var(--primary);
+  }
+  #new-conv:hover { background: #f0f7ff; }
+  #conv-list { list-style: none; margin: 0; padding: 0 8px; overflow-y: auto; flex: 1; }
+  #conv-list li {
+    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    font-size: 14px; color: var(--muted);
+  }
+  #conv-list li:hover { background: #f3f4f6; }
+  #conv-list li.active { background: #e8f0fe; color: var(--primary); font-weight: 600; }
+  #conv-list li .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #conv-list li .del { opacity: 0; color: #ef4444; border: none; background: none; cursor: pointer; }
+  #conv-list li:hover .del { opacity: 1; }
+  #conv-list li .count { font-size: 12px; color: #9ca3af; }
+ 
+  .keybox { padding: 12px; border-top: 1px solid var(--line); }
+  .keybox label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .keybox input { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+ 
+  /* ---------- 右侧 ---------- */
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #messages { flex: 1; overflow-y: auto; padding: 24px 8%; }
+  .msg { display: flex; margin-bottom: 18px; }
+  .msg .bubble {
+    max-width: 78%; padding: 12px 16px; border-radius: 12px;
+    line-height: 1.75; white-space: pre-wrap; word-break: break-word;
+    border: 1px solid var(--line); background: var(--ai-bg);
+  }
+  .msg.user { justify-content: flex-end; }
+  .msg.user .bubble { background: var(--user-bg); color: #fff; border-color: var(--user-bg); }
+  .msg.error .bubble { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+  .msg .bubble .cursor { display: inline-block; width: 7px; height: 15px;
+    background: var(--primary); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+ 
+  #composer { display: flex; gap: 10px; padding: 14px 8% 22px; }
+  #input {
+    flex: 1; resize: none; padding: 12px 14px; border: 1px solid var(--line);
+    border-radius: 10px; font-family: inherit; font-size: 15px; min-height: 48px; max-height: 160px;
+  }
+  #input:focus { outline: none; border-color: var(--primary); }
+  #send {
+    padding: 0 26px; border: none; border-radius: 10px; background: var(--primary);
+    color: #fff; font-size: 15px; cursor: pointer;
+  }
+  #send:disabled { background: #9ca3af; cursor: not-allowed; }
+ 
+  #toast {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    background: #111827; color: #fff; padding: 10px 18px; border-radius: 8px;
+    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: .93; }
+  .empty { color: var(--muted); text-align: center; margin-top: 15vh; font-size: 15px; }
+</style>
+</head>
+<body>
+ 
+<aside id="sidebar">
+  <h1>校园知识助手</h1>
+  <button id="new-conv">＋ 新对话</button>
+  <ul id="conv-list"></ul>
+  <div class="keybox">
+    <label>API Key（只保存在本次浏览器会话）</label>
+    <input id="api-key" type="password" placeholder="sk-campus-..." />
+  </div>
+</aside>
+ 
+<main>
+  <div id="messages"><div class="empty">在下面输入你的问题开始对话</div></div>
+  <form id="composer">
+    <textarea id="input" rows="1" placeholder="例如：缓考怎么申请？（Enter 发送，Shift+Enter 换行）"></textarea>
+    <button id="send" type="submit">发送</button>
+  </form>
+</main>
+ 
+<div id="toast"></div>
+ 
+<script>
+/* ============================================================
+   0. 全局状态与小工具
+   ============================================================ */
+const API = "/api/v1";
+const $ = (id) => document.getElementById(id);
+ 
+let currentConvId = null;
+let sending = false;
+ 
+function toast(msg, ms = 2600) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove("show"), ms);
+}
+ 
+/* ★ 用 sessionStorage：关掉标签页就清空，比 localStorage 安全。
+   注意：前端代码里绝不硬编码 API Key。 */
+const getKey = () => sessionStorage.getItem("apiKey") || "";
+const setKey = (v) => sessionStorage.setItem("apiKey", v);
+ 
+/* ★ 把用户输入中的 HTML 转义掉，防止 XSS。
+   任何"把用户内容当 HTML 插入页面"的地方都必须先过这一道。 */
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+ 
+/* 统一的后端调用：自动带 Key、统一处理错误 */
+async function api(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const key = getKey();
+  if (key) headers["X-API-Key"] = key;
+ 
+  const resp = await fetch(API + path, { ...options, headers });
+ 
+  if (resp.status === 401) {
+    toast("API Key 无效或未填写，请在左下角填写");
+    throw new Error("unauthorized");
+  }
+  if (resp.status === 429) {
+    const wait = resp.headers.get("Retry-After") || "一会儿";
+    toast(`请求太频繁，请 ${wait} 秒后再试`);
+    throw new Error("rate_limited");
+  }
+  if (!resp.ok) {
+    let detail = resp.status;
+    try {
+      const body = await resp.json();
+      detail = body?.error?.message || JSON.stringify(body);
+    } catch (_) {}
+    toast("请求失败：" + detail);
+    throw new Error("http_" + resp.status);
+  }
+  if (resp.status === 204) return null;
+  return resp.json();
+}
+ 
+/* ============================================================
+   1. 消息区
+   ============================================================ */
+const msgBox = $("messages");
+ 
+function clearMessages() { msgBox.innerHTML = ""; }
+ 
+function addMessage(role, text) {
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + role;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;        // ★ textContent 天生防 XSS
+  wrap.appendChild(bubble);
+  msgBox.appendChild(wrap);
+  scrollToBottom();
+  return bubble;
+}
+ 
+function scrollToBottom() {
+  msgBox.scrollTop = msgBox.scrollHeight;
+}
+ 
+/* ============================================================
+   2. 会话列表
+   ============================================================ */
+async function loadConversations() {
+  let data;
+  try {
+    data = await api("/conversations?page=1&size=50");
+  } catch (_) {
+    return;
+  }
+  const ul = $("conv-list");
+  ul.innerHTML = "";
+  for (const c of data.items) {
+    const li = document.createElement("li");
+    if (c.id === currentConvId) li.classList.add("active");
+    li.innerHTML = `
+      <span class="title">${esc(c.title)}</span>
+      <span class="count">${c.message_count}</span>
+      <button class="del" title="删除">✕</button>`;
+    li.onclick = (e) => {
+      if (e.target.classList.contains("del")) return;
+      openConversation(c.id);
+    };
+    li.querySelector(".del").onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`删除「${c.title}」？`)) return;
+      await api(`/conversations/${c.id}`, { method: "DELETE" });
+      if (currentConvId === c.id) newConversation();
+      loadConversations();
+    };
+    ul.appendChild(li);
+  }
+}
+ 
+async function openConversation(id) {
+  currentConvId = id;
+  const data = await api(`/conversations/${id}`);
+  clearMessages();
+  if (!data.messages.length) {
+    msgBox.innerHTML = '<div class="empty">这个会话还是空的</div>';
+  }
+  for (const m of data.messages) addMessage(m.role, m.content);
+  loadConversations();
+}
+ 
+function newConversation() {
+  currentConvId = null;
+  clearMessages();
+  msgBox.innerHTML = '<div class="empty">在下面输入你的问题开始对话</div>';
+  loadConversations();
+  $("input").focus();
+}
+ 
+$("new-conv").onclick = newConversation;
+ 
+/* ============================================================
+   3. 发送 + 流式接收（本章技术核心）
+   ============================================================ */
+async function send(question) {
+  if (!getKey()) { toast("请先在左下角填写 API Key"); return; }
+ 
+  msgBox.querySelector(".empty")?.remove();
+  addMessage("user", question);
+  const bubble = addMessage("assistant", "");
+  const cursor = document.createElement("span");
+  cursor.className = "cursor";
+  bubble.appendChild(cursor);
+ 
+  sending = true;
+  $("send").disabled = true;
+ 
+  let resp;
+  try {
+    resp = await fetch(API + "/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": getKey() },
+      body: JSON.stringify({
+        question,
+        conversation_id: currentConvId,
+        temperature: 0.7,
+      }),
+    });
+  } catch (err) {
+    cursor.remove();
+    bubble.closest(".msg").classList.add("error");
+    bubble.textContent = "网络错误，请检查后端服务是否在运行。";
+    sending = false; $("send").disabled = false;
+    return;
+  }
+ 
+  // ★ 注意：这里的错误是"流开始前"的错误，状态码还有意义
+  if (!resp.ok) {
+    cursor.remove();
+    bubble.closest(".msg").classList.add("error");
+    let msg = "HTTP " + resp.status;
+    try { msg = (await resp.json())?.error?.message || msg; } catch (_) {}
+    bubble.textContent = msg;
+    sending = false; $("send").disabled = false;
+    return;
+  }
+ 
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  let answer = "";
+  let degraded = false;
+ 
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+ 
+    // ★ stream: true 让解码器记住"被切断的半个汉字"，下一块拼上再解
+    buffer += decoder.decode(value, { stream: true });
+ 
+    // SSE 消息之间用空行分隔
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop();          // 最后一段可能不完整，留到下一轮
+ 
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+ 
+      let evt;
+      try { evt = JSON.parse(line.slice(5).trim()); } catch (_) { continue; }
+ 
+      if (evt.type === "meta") {
+        currentConvId = evt.conversation_id;
+      } else if (evt.type === "delta") {
+        answer += evt.content;
+        bubble.textContent = answer;      // 先写文字
+        bubble.appendChild(cursor);       // 再把光标放回末尾
+        scrollToBottom();
+      } else if (evt.type === "error") {
+        degraded = true;
+        bubble.closest(".msg").classList.add("error");
+      } else if (evt.type === "done") {
+        // 结束
+      }
+    }
+  }
+ 
+  cursor.remove();
+  if (degraded) toast("本次为降级回答（模型服务异常）");
+  loadConversations();
+  sending = false;
+  $("send").disabled = false;
+  $("input").focus();
+}
+ 
+$("composer").onsubmit = async (e) => {
+  e.preventDefault();
+  if (sending) return;
+  const input = $("input");
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = "";
+  input.style.height = "auto";
+  await send(q);
+};
+ 
+/* Enter 发送，Shift+Enter 换行 */
+$("input").onkeydown = (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    $("composer").requestSubmit();
+  }
+};
+ 
+/* 输入框自适应高度 */
+$("input").oninput = function () {
+  this.style.height = "auto";
+  this.style.height = Math.min(this.scrollHeight, 160) + "px";
+};
+ 
+/* ============================================================
+   4. 启动
+   ============================================================ */
+$("api-key").value = getKey();
+$("api-key").onchange = (e) => {
+  setKey(e.target.value.trim());
+  toast("API Key 已保存到本次会话");
+  loadConversations();
+};
+ 
+/* 支持在地址栏用 ?conv=3 直接打开某个会话 */
+(async function init() {
+  const qs = new URLSearchParams(location.search);
+  const conv = qs.get("conv");
+  if (getKey()) {
+    await loadConversations();
+    if (conv) openConversation(Number(conv));
+  } else {
+    toast("请先在左下角填写 API Key", 4000);
+  }
+})();
+</script>
+</body>
+</html>

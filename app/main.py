@@ -26,6 +26,10 @@ from fastapi.staticfiles import StaticFiles
 
 from contextlib import asynccontextmanager
 
+from fastapi.responses import FileResponse
+
+from fastapi.middleware.cors import CORSMiddleware
+
 settings=get_settings()
 
 setup_logging(level=settings.log_level,json_output=settings.is_prod)
@@ -50,5 +54,22 @@ app.include_router(api_router)
 WEB_DIR=Path(BASE_DIR)/"web"
 if WEB_DIR.exists():
     app.mount("/static",StaticFiles(directory=str(WEB_DIR)),name="static")
+
+    @app.get("/",include_in_schema=False)
+    async def index()->FileResponse:
+        return FileResponse(str(WEB_DIR/"index.html"))
+
+if settings.cors_origin_list!=["*"] or not settings.is_prod:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID","X-RateLimit-Remaining","Retry-After"],
+    )
+
+    
+
 
 
