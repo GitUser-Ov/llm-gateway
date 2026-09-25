@@ -13,7 +13,14 @@ from app.services.conversation_service import make_title
 from app.cache import answer_cache
 from app.cache.redis_client import get_redis
 from dataclasses import dataclass
+import redis.asyncio as aioredis
 
+@dataclass
+class AnswerResult:
+    conversation:Conversation
+    message:Message
+    from_cache:bool=False
+    degraded:bool=False
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -52,9 +59,12 @@ async def answer_in_conversation(
     question: str,
     conversation_id: int | None = None,
     temperature: float = 0.7,
+    redis:aioredis.Redis|None=None,
     use_cache:bool=True,
-) -> tuple[Conversation, Message]:
+) -> AnswerResult:
     """非流式问答：一个事务里做完所有数据库操作。"""
+    redis=redis or get_redis()  
+        
     question = (question or "").strip()
     if not question:
         raise BadRequestError("问题内容不能为空")
@@ -64,7 +74,6 @@ async def answer_in_conversation(
     await db.flush()
     history = await build_context(db, conv.id)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
-    redis=get_redis()
     cached:str|None=None
     if use_cache:
         cached=await answer_cache.get_answer(
@@ -156,9 +165,3 @@ async def stream_answer(
             yield ch
         raise          # 让上层知道发生过失败（用于记录/标记）
 
-@dataclass
-class AnswerResult:
-    conversation:Conversation
-    message:Message
-    from_cache:bool=False
-    degraded:bool=False

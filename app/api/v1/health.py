@@ -9,7 +9,7 @@ router=APIRouter(tags=["健康检查"])
 def health():
     settings=get_settings()
     return{
-    "status":"OK",
+    "status":"ok",
     "app":settings.app_name,
     "env":settings.env,
     }

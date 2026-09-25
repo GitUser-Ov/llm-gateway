@@ -11,8 +11,11 @@ from app.db.base import SessionLocal
 from app.db.models import User
 from app.cache.redis_client import get_redis
 from app.core.ratelimit import FixedWindowRateLimiter,RateLimitInfo,DailyQuota
+from app.cache.redis_client import get_redis
+import redis.asyncio as aioredis
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+RedisDep=Annotated[aioredis.Redis,Depends(get_redis)]
 
 async def get_db() -> AsyncIterator[AsyncSession]:
     """每个请求一个 Session，请求结束自动关闭。"""

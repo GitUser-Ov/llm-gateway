@@ -8,7 +8,7 @@ from app.api.deps import CurrentUserDep, DbDep, SettingsDep
 from app.core.errors import UpstreamError
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services import chat_service as svc
-from app.api.deps import CurrentUserDep,DbDep,RateLimitDep,QuotaDep,SettingsDep
+from app.api.deps import CurrentUserDep,DbDep,RateLimitDep,QuotaDep,SettingsDep,RedisDep
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +16,14 @@ router = APIRouter(prefix="/chat", tags=["聊天"])
 
 @router.post("", response_model=ChatResponse, summary="单轮问答（非流式）")
 async def chat(
-    req: ChatRequest, db: DbDep, user: CurrentUserDep, settings: SettingsDep,_rl:RateLimitDep,_quota:QuotaDep,
+    req: ChatRequest, db: DbDep, user: CurrentUserDep, settings: SettingsDep,_rl:RateLimitDep,_quota:QuotaDep,redis:RedisDep,
 ) -> ChatResponse:
     result = await svc.answer_in_conversation(
         db, user,
         question=req.question,
         conversation_id=req.conversation_id,
         temperature=req.temperature,
+        redis=redis,
     )
     return ChatResponse(
         conversation_id=result.conversation.id,
