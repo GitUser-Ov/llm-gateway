@@ -1,3 +1,5 @@
+name:   campus-ai
+
 services:
   db:
     image: postgres:16-alpine
@@ -16,11 +18,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: campus-redis
-    command: ["redis-server","--appendonly","yes"]
+    command: ["redis-server","--appendonly","yes","--maxmemory","256mb","--maxmemory-policy","allkeys-lru"]
     ports:
       - "6379:6379"
     volumes:
@@ -30,6 +34,33 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: campus-app
+    env_file:
+      - .env
+
+    environment:
+      DATABASE_URL: postgresql+psycopg://campus:campus_pwd@db:5432/campus
+      REDIS_URL: redis://redis:6379/0
+
+      ENV: prod
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+            uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    restart: unless-stopped
 
 volumes:
   pgdata:
