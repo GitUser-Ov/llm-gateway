@@ -14,7 +14,7 @@ import time
 import httpx
 
 BASE = "http://127.0.0.1:8000/api/v1"
-QUESTION = "缓考怎么申请的？"
+QUESTION = "这个项目怎么做故障转移？"
 
 
 async def one(client: httpx.AsyncClient, key: str) -> tuple[bool, float, dict]:

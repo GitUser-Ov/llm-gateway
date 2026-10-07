@@ -1,9 +1,11 @@
+# 注意：项目名保持不变。它决定 volume 名（campus-ai_pgdata），
+# 改名会创建空 volume、导致已有数据「消失」。容器名是临时的，可以随便改。
 name:   campus-ai
 
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: campus-db
+    container_name: llm-gateway-db
     environment:
       POSTGRES_USER: campus
       POSTGRES_PASSWORD: campus_pwd
@@ -23,7 +25,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: campus-redis
+    container_name: llm-gateway-redis
     command: ["redis-server","--appendonly","yes","--maxmemory","256mb","--maxmemory-policy","allkeys-lru"]
     ports:
       - "6379:6379"
@@ -40,7 +42,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: campus-app
+    container_name: llm-gateway-app
     env_file:
       - .env
 

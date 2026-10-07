@@ -6,7 +6,7 @@ class ChatRequest(BaseModel):
     min_length=1,
     max_length=2000,
     description="用户的问题",
-    examples=["缓考怎么申请"],
+    examples=["知识库里有关于部署的说明吗？"],
     )
     conversation_id:int|None=Field(None,description="会话id：不传则自动新建一个会话")
     temperature:float=Field(

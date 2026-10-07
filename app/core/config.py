@@ -28,7 +28,7 @@ class Settings(BaseSettings):
         case_sensitive=False
     )
 
-    app_name:str="campus-ai"
+    app_name:str="llm-gateway"
     env:str="dev"
     debug:bool=True
     log_level:str="INFO"

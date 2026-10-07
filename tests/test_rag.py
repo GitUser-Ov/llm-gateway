@@ -52,8 +52,8 @@ def test_chunker_rejects_overlap_ge_size():
 
 def test_fake_embedder_is_deterministic_and_normalized():
     e = FakeEmbedder(dim=32)
-    v1 = e.encode(["缓考怎么申请"])
-    v2 = e.encode(["缓考怎么申请"])
+    v1 = e.encode(["项目怎么部署"])
+    v2 = e.encode(["项目怎么部署"])
     assert v1.shape == (1, 32)
     assert (v1 == v2).all()
     assert abs(float((v1 ** 2).sum()) - 1.0) < 1e-5      # 已归一化
@@ -78,8 +78,8 @@ async def rag_db(test_maker):
 async def test_ingest_creates_document_and_chunks(rag_db):
     db, e = rag_db
     doc = await ingest_document(
-        db, source="test://doc1", text="# 缓考\n学生需在考试前提交申请。",
-        title="缓考规定", embedder=e,
+        db, source="test://doc1", text="# 部署\n服务通过 compose 启动。",
+        title="部署说明", embedder=e,
     )
     assert doc.id > 0
     assert doc.chunk_count >= 1
@@ -114,21 +114,21 @@ async def test_ingest_is_idempotent(rag_db):
 async def test_search_returns_citation_and_score(rag_db):
     db, e = rag_db
     await ingest_document(
-        db, "test://campus", "# 缓考申请\n学生需在考试前向学院提交缓考申请。",
-        title="缓考规定", embedder=e,
+        db, "test://kb", "# 部署说明\n服务通过 docker compose 启动，自动执行数据库迁移。",
+        title="部署说明", embedder=e,
     )
-    results = await search(db, "缓考申请流程", embedder=e, min_score=-1.0)
+    results = await search(db, "部署流程", embedder=e, min_score=-1.0)
     assert results
     top = results[0]
-    assert top.source == "test://campus"
-    assert "缓考规定" in top.citation
+    assert top.source == "test://kb"
+    assert "部署说明" in top.citation
     assert -1.0 <= top.score <= 1.0001
 
 
 async def test_search_orders_by_similarity(rag_db):
     """更相似的文档应该排在前面。"""
     db, e = rag_db
-    await ingest_document(db, "test://a", "缓考 申请 缓考 申请", title="A", embedder=e)
+    await ingest_document(db, "test://a", "部署 启动 部署 启动", title="A", embedder=e)
     await ingest_document(db, "test://b", "图书馆 开放 时间", title="B", embedder=e)
 
     results = await search(db, "图书馆 开放 时间", embedder=e, min_score=-1.0)

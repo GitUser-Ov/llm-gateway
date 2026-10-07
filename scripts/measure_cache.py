@@ -5,7 +5,7 @@ import time
 import httpx
 
 BASE="http://127.0.0.1:8000/api/v1"
-QUESTION="缓考怎么申请？"
+QUESTION="这个项目支持哪些大模型上游？"
 
 async def ask(client:httpx.AsyncClient,key:str,question:str,conv_id:int|None=None):
     body={"question":question,"temperature":0.3}
@@ -33,7 +33,7 @@ async def main()->None:
         results=await asyncio.gather(*[ask(client,key,QUESTION)for _ in range(10)])
         wall=time.perf_counter() - t0
         hits=sum(1 for d,_ in results if d["from_cache"])
-        print(f"\n10个学生问同一问题：总耗时{wall:.3f}s,命中{hits}/10")
+        print(f"\n10 个并发问同一问题：总耗时{wall:.3f}s,命中{hits}/10")
 
         print(f"\n加速倍数:{t1/max(t3,0.001):.0f}x")
 

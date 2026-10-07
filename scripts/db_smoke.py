@@ -20,14 +20,14 @@ def main()->None:
         db.refresh(user)
         print(f"2用户写入成功 id={user.id}")
 
-        conv=Conversation(user_id=user.id,title="缓考咨询")
+        conv=Conversation(user_id=user.id,title="上线流程咨询")
         db.add(conv)
         db.commit()
         db.refresh(conv)
 
         db.add_all(
-        [Message(conversation_id=conv.id,role="user",content="缓考怎么申请？"),
-         Message(conversation_id=conv.id,role="assistant",content="请考前3个工作日提交申请"),
+        [Message(conversation_id=conv.id,role="user",content="这个项目怎么部署？"),
+         Message(conversation_id=conv.id,role="assistant",content="见 README 的快速开始章节"),
         ]
         )
         db.commit()

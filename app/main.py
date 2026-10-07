@@ -41,11 +41,11 @@ async def lifespan(app:FastAPI):
     await engine.dispose()
 
 app=FastAPI(
-    title="Campus AI · 校园问答服务",
+    title="LLM 应用网关服务",
     version="0.1.0",
     description=(
-        "校园问答大模型服务后端：会话记忆、SSE 流式输出、"
-        "分钟级限流与按天配额、精确缓存、模型故障降级。"
+        "大模型应用网关：多上游路由与故障转移、SSE 流式输出、"
+        "限流与按天配额、精确缓存、用量计量，内置 RAG 知识库检索。"
     ),
     lifespan=lifespan,
 )

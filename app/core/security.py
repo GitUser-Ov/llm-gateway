@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 
-KEY_PREFIX="sk-campus-"
+KEY_PREFIX="sk-llm-"
 
 def hash_api_key(raw:str)->str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()

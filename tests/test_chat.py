@@ -5,7 +5,7 @@ from tests.conftest import FakeLLM
 async def test_chat_creates_conversation_and_persists(client,auth_headers,fake_llm):
     resp=await client.post(
         "/api/v1/chat",
-        json={"question":"缓考怎么申请?","temperature":0.3},
+        json={"question":"这个项目怎么部署?","temperature":0.3},
         headers=auth_headers,
     )
     assert resp.status_code==200
@@ -20,12 +20,12 @@ async def test_chat_creates_conversation_and_persists(client,auth_headers,fake_l
         f"/api/v1/conversations/{data['conversation_id']}",headers=auth_headers
     )
 
-    assert conv.json()["title"].startswith("缓考怎么申请")
+    assert conv.json()["title"].startswith("项目怎么部署")
 
     assert len(conv.json()["messages"])==2
 
 async def test_cache_hit_avoids_model_call(client,auth_headers,fake_llm):
-    payload={"question":"缓考怎么申请？","temperature":0.3}
+    payload={"question":"这个项目怎么部署？","temperature":0.3}
 
     r1=await client.post("/api/v1/chat",json=payload,headers=auth_headers)
     assert r1.status_code==200
@@ -40,7 +40,7 @@ async def test_cache_hit_avoids_model_call(client,auth_headers,fake_llm):
     assert len(fake_llm.calls)==1
 
 async def test_same_conversation_does_not_hit_cache(client,auth_headers,fake_llm):
-    payload={"question":"缓考怎么申请？","temperature":0.3}
+    payload={"question":"这个项目怎么部署？","temperature":0.3}
     r1=await client.post("/api/v1/chat",json=payload,headers=auth_headers)
     cid=r1.json()["conversation_id"]
 

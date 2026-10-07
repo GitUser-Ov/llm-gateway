@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>校园知识助手</title>
+<title>LLM 应用网关 · 知识库问答</title>
 <style>
   :root {
     --bg: #f7f8fa; --panel: #fff; --line: #e5e7eb;
@@ -86,19 +86,19 @@
 <body>
  
 <aside id="sidebar">
-  <h1>校园知识助手</h1>
+  <h1>知识库问答助手</h1>
   <button id="new-conv">＋ 新对话</button>
   <ul id="conv-list"></ul>
   <div class="keybox">
     <label>API Key（只保存在本次浏览器会话）</label>
-    <input id="api-key" type="password" placeholder="sk-campus-..." />
+    <input id="api-key" type="password" placeholder="sk-llm-..." />
   </div>
 </aside>
  
 <main>
   <div id="messages"><div class="empty">在下面输入你的问题开始对话</div></div>
   <form id="composer">
-    <textarea id="input" rows="1" placeholder="例如：缓考怎么申请？（Enter 发送，Shift+Enter 换行）"></textarea>
+    <textarea id="input" rows="1" placeholder="例如：这个项目怎么部署？（Enter 发送，Shift+Enter 换行）"></textarea>
     <button id="send" type="submit">发送</button>
   </form>
 </main>

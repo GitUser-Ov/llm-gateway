@@ -71,11 +71,11 @@ async def seed(test_maker, text: str, title: str = "测试文档") -> None:
 
 async def test_context_is_injected_into_prompt(client, auth_headers, fake_llm, test_maker):
     """检索到资料时，prompt 必须包含资料正文与引用要求。"""
-    await seed(test_maker, "# 缓考规定\n学生需在考试前向学院提交缓考申请。", "缓考规定")
+    await seed(test_maker, "# 部署说明\n服务通过 docker compose 启动，自动执行数据库迁移。", "部署说明")
 
     resp = await client.post(
         "/api/v1/chat",
-        json={"question": "缓考 规定 申请", "temperature": 0.3},
+        json={"question": "部署 说明 启动", "temperature": 0.3},
         headers=auth_headers,
     )
     assert resp.status_code == 200
@@ -83,7 +83,7 @@ async def test_context_is_injected_into_prompt(client, auth_headers, fake_llm, t
 
     sent = fake_llm.calls[0]                       # 发给模型的完整 messages
     joined = " ".join(m["content"] for m in sent)
-    assert "缓考申请" in joined                    # 资料正文进去了
+    assert "部署说明" in joined                    # 资料正文进去了
     assert "[1]" in joined                         # 带了编号，便于引用
     assert any("参考资料" in m["content"] for m in sent)
     assert sent[0]["role"] == "system"
@@ -92,16 +92,16 @@ async def test_context_is_injected_into_prompt(client, auth_headers, fake_llm, t
 
 async def test_citations_are_returned(client, auth_headers, fake_llm, test_maker):
     """引用来源要透出到响应里。"""
-    await seed(test_maker, "# 缓考规定\n学生需在考试前向学院提交缓考申请。", "缓考规定")
+    await seed(test_maker, "# 部署说明\n服务通过 docker compose 启动，自动执行数据库迁移。", "部署说明")
 
     resp = await client.post(
         "/api/v1/chat",
-        json={"question": "缓考 规定 申请", "temperature": 0.3},
+        json={"question": "部署 说明 启动", "temperature": 0.3},
         headers=auth_headers,
     )
     data = resp.json()
     assert data["citations"], "应当返回至少一条引用"
-    assert any("缓考规定" in c for c in data["citations"])
+    assert any("部署说明" in c for c in data["citations"])
 
 
 async def test_refuses_without_context(client, auth_headers, fake_llm):
@@ -136,18 +136,18 @@ async def test_refuse_can_be_disabled(client, auth_headers, fake_llm, monkeypatc
 
 async def test_stream_meta_event_carries_citations(client, auth_headers, fake_llm, test_maker):
     """流式场景下，引用要在首个 meta 事件就推给前端。"""
-    await seed(test_maker, "# 缓考规定\n学生需在考试前向学院提交缓考申请。", "缓考规定")
+    await seed(test_maker, "# 部署说明\n服务通过 docker compose 启动，自动执行数据库迁移。", "部署说明")
 
     resp = await client.post(
         "/api/v1/chat/stream",
-        json={"question": "缓考 规定 申请", "temperature": 0.3},
+        json={"question": "部署 说明 启动", "temperature": 0.3},
         headers=auth_headers,
     )
     assert resp.status_code == 200
     events = sse_events(resp.text)
     meta = next(e for e in events if e["type"] == "meta")
     assert meta["citations"]
-    assert any("缓考规定" in c for c in meta["citations"])
+    assert any("部署说明" in c for c in meta["citations"])
 
 
 async def test_stream_refuses_without_context(client, auth_headers, fake_llm):

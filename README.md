@@ -1,10 +1,10 @@
-# Campus AI · 大模型接入网关
+# LLM 应用网关
 
 把「调用大模型」这件事从每个业务里抽出来，做成一层可复用的服务：**多上游路由与故障转移**、
 超时与分级重试、模型故障降级、多租户限流与配额、答案缓存、用量计量与调用审计、
 **私有知识库检索（RAG）**。
 
-业务侧（校园问答）作为**示例租户**跑在这层网关之上。
+网关本身与领域无关：给它灌入哪份文档，它就成为哪个领域（公司规章、产品文档、技术手册皆可）的问答服务。
 
 **技术栈**：Python 3.12 / FastAPI / SQLAlchemy 2.0 (async) / PostgreSQL + pgvector / Redis / Alembic / sentence-transformers / Docker
 
@@ -171,7 +171,7 @@ docker compose exec app python -m scripts.create_user 张三
 docker compose exec app python -m scripts.ingest /app/docs   # 灌入知识库（可选）
 ```
 
-输出中的 `sk-campus-...` 就是 API Key，**只显示这一次**。
+输出中的 `sk-llm-...` 就是 API Key，**只显示这一次**。
 
 - 对话前端：<http://localhost:8000/>
 - 接口文档：<http://localhost:8000/docs>
@@ -213,7 +213,7 @@ python -m scripts.eval_rag --full
 
 ## API 一览
 
-所有业务接口均需请求头 `X-API-Key: sk-campus-...`
+所有业务接口均需请求头 `X-API-Key: sk-llm-...`
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -251,7 +251,7 @@ python -m scripts.eval_rag --full
 
 ```bash
 curl -N http://localhost:8000/api/v1/chat/stream \
-  -H "X-API-Key: sk-campus-..." \
+  -H "X-API-Key: sk-llm-..." \
   -H "Content-Type: application/json" \
   -d '{"question":"这个项目怎么做故障转移？","temperature":0.3}'
 ```
