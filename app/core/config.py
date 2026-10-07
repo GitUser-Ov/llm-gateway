@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # 多上游配置：JSON 数组字符串。留空则回退到下面的 deepseek_* 单上游。
     llm_upstreams:str=""
 
+    # 本地开发默认值；生产部署请通过 DATABASE_URL 环境变量覆盖
     database_url:str="postgresql+psycopg://campus:campus_pwd@localhost:5432/campus"
     db_pool_size:int=5
     db_max_overflow:int=10

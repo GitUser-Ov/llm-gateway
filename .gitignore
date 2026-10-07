@@ -6,7 +6,10 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 
+# 密钥与本地配置：绝不提交（保留 .env.example 作为模板）
 .env
+.env.*
+!.env.example
 
 *.log
 .pytest_cache/
@@ -14,8 +17,16 @@ __pycache__/
 htmlcov/
 .coverage.*
 
+# HuggingFace 本地模型缓存（体积大，不入库）
+.cache/
+models/
+
 .vscode/
 .idea/
 *.swp
 .DS_Store
+
+# 我自己的临时/试验文件
+*.bak
+_stream_test*
 

@@ -7,16 +7,17 @@ services:
     image: pgvector/pgvector:pg16
     container_name: llm-gateway-db
     environment:
-      POSTGRES_USER: campus
-      POSTGRES_PASSWORD: campus_pwd
-      POSTGRES_DB: campus
+      # 均为本地开发默认值；公网部署前请用外部环境变量覆盖
+      POSTGRES_USER: ${POSTGRES_USER:-campus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-campus_pwd}
+      POSTGRES_DB: ${POSTGRES_DB:-campus}
       TZ: Asia/Shanghai
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL","pg_isready -U campus -d campus"]
+      test: ["CMD-SHELL","pg_isready -U ${POSTGRES_USER:-campus} -d ${POSTGRES_DB:-campus}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -47,7 +48,7 @@ services:
       - .env
 
     environment:
-      DATABASE_URL: postgresql+psycopg://campus:campus_pwd@db:5432/campus
+      DATABASE_URL: postgresql+psycopg://campus:${POSTGRES_PASSWORD:-campus_pwd}@db:5432/campus
       REDIS_URL: redis://redis:6379/0
 
       ENV: prod
