@@ -6,17 +6,24 @@ import pytest
 import pytest_asyncio
 import redis.asyncio as aioredis
 from httpx import ASGITransport,AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker,create_async_engine
 
 os.environ.setdefault("ENV","test")
 os.environ.setdefault("LOG_LEVEL","WARNING")
+# 默认关闭 RAG：绝大多数用例测的是网关/会话逻辑，不该被空知识库的拒答分支干扰。
+# 需要验证 RAG 行为的用例自行 monkeypatch 打开（见 test_rag_chat.py）。
+os.environ.setdefault("RAG_ENABLED","false")
 
 from app.api.deps import get_db,get_redis
 from app.core.config import get_settings
 from app.core.security import generate_api_key,hash_api_key
 from app.db.base import Base
 import app.db.models
+import app.db.rag_models
 from app.db.models import User
+from app.rag import embedder as embedder_module
+from app.rag.embedder import FakeEmbedder
 from app.main import app
 
 settings=get_settings()
@@ -30,10 +37,24 @@ TEST_DB_URL=os.getenv("TEST_DATABASE_URL")or(settings.database_url.rsplit("/",1)
 
 TEST_REDIS_URL=settings.redis_url.rsplit("/",1)[0]+"/15"
 
+@pytest.fixture(autouse=True)
+def fake_embedder_for_tests():
+    """全测试统一用假向量后端：不下载模型、不依赖 torch、结果确定。
+
+    真实向量模型（bge-small-zh）的检索质量由 scripts/eval_rag.py 单独评测，
+    单元测试只需保证链路正确。
+    """
+    original=embedder_module._embedder
+    embedder_module.set_embedder(FakeEmbedder(settings.embed_dim))
+    yield
+    embedder_module.set_embedder(original)
+
 @pytest_asyncio.fixture(scope="session")
 async def test_engine():
     engine=create_async_engine(TEST_DB_URL,echo=False,pool_pre_ping=True)
     async with engine.begin() as conn:
+        # RAG 需要 pgvector 扩展，测试库同样要先启用
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield engine

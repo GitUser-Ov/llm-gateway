@@ -26,6 +26,7 @@ class ChatResponse(BaseModel):
     upstream:str=Field("",description="实际服务本次请求的上游名称")
     prompt_tokens:int=Field(0,description="输入 token 数（缓存命中或降级时为 0）")
     completion_tokens:int=Field(0,description="输出 token 数")
+    citations:list[str]=Field(default_factory=list,description="回答依据的知识库来源")
 
     
 

@@ -6,6 +6,7 @@ from app.core.config import get_settings
 
 from app.db.base import Base
 import app.db.models
+import app.db.rag_models
 
 config=context.config
 

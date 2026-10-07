@@ -37,6 +37,7 @@ async def chat(
         upstream=usage.upstream if usage else "",
         prompt_tokens=usage.prompt_tokens if usage else 0,
         completion_tokens=usage.completion_tokens if usage else 0,
+        citations=result.citations,
     )
 
 def sse(payload: dict) -> str:
@@ -44,13 +45,18 @@ def sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 async def stream_generator(
-    conv_id: int, messages: list[dict], temperature: float
+    conv_id: int, messages: list[dict], temperature: float, citations: list[str] | None = None
 ) -> AsyncIterator[str]:
     """把模型输出逐段转成 SSE 文本。
     注意：这里已经不在请求级的数据库会话里了（第 9 章讲过为什么）。
     落库用 svc.persist_assistant_message（它自己开短会话）。
     """
-    yield sse({"type": "meta", "conversation_id": conv_id})
+    yield sse({
+        "type": "meta",
+        "conversation_id": conv_id,
+        # ★ 先把引用来源推给前端，用户可以在回答生成时就看到依据
+        "citations": citations or [],
+    })
     parts: list[str] = []
     failed = False
     usage = Usage()          # ★ 本次流的用量，就地累加
@@ -91,11 +97,11 @@ async def stream_generator(
 @router.post("/stream", summary="流式问答（SSE）")
 async def chat_stream(req: ChatRequest, db: DbDep, user: CurrentUserDep,_rl:RateLimitDep,_quota:QuotaDep) -> StreamingResponse:
     # ★ 所有可能失败的检查都在流开始前做完（这时还能返回正常的 4xx）
-    conv_id, messages = await svc.prepare_turn(
+    conv_id, messages, citations = await svc.prepare_turn(
         db, user, question=req.question, conversation_id=req.conversation_id
     )
     return StreamingResponse(
-        stream_generator(conv_id, messages, req.temperature),
+        stream_generator(conv_id, messages, req.temperature, citations),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

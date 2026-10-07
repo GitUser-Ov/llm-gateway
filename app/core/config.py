@@ -55,6 +55,23 @@ class Settings(BaseSettings):
     rate_limit_per_minute:int=20
     daily_quota:int=300
 
+    # ---------- RAG（私有知识库检索）----------
+    rag_enabled:bool=True
+    # 向量后端：local（本地 sentence-transformers）| ollama | fake（仅测试）
+    embed_backend:str="local"
+    # 中文语料实测：bge-small-zh-v1.5 top-1 100%，优于通用英文模型的 57%
+    embed_model:str="BAAI/bge-small-zh-v1.5"
+    embed_dim:int=512
+    embed_timeout_seconds:float=30.0
+    ollama_base_url:str="http://127.0.0.1:11434"
+    # 检索参数
+    rag_top_k:int=4
+    rag_min_score:float=0.35
+    chunk_size:int=500
+    chunk_overlap:int=80
+    # 检索到的资料不足时，是否拒答（而不是让模型自由发挥）
+    rag_refuse_when_empty:bool=True
+
     cors_origins:str="*"
 
     @property
