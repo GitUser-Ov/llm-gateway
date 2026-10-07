@@ -96,16 +96,26 @@ class FakeLLM:
         self.fail_with=fail_with
         self.calls:list[list[dict]]=[]
 
-    async def chat(self,messages:list[dict],temperature:float=0.7)->str:
+    async def chat(self,messages:list[dict],temperature:float=0.7,usage=None)->str:
         self.calls.append(messages)
         if self.fail_with is not None:
             raise self.fail_with
+        if usage is not None:
+            usage.prompt_tokens=11
+            usage.completion_tokens=22
+            usage.model="fake-model"
+            usage.upstream="fake"
         return self.answer
 
-    async def stream_chat(self,messages:list[dict],temperature:float=0.7):
+    async def stream_chat(self,messages:list[dict],temperature:float=0.7,usage=None):
         self.calls.append(messages)
         if self.fail_with is not None:
             raise self.fail_with
+        if usage is not None:
+            usage.prompt_tokens=33
+            usage.completion_tokens=44
+            usage.model="fake-model"
+            usage.upstream="fake"
         for ch in self.answer:
             yield ch
 

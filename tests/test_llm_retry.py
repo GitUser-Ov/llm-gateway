@@ -19,7 +19,7 @@ async def test_chat_retries_then_succeeds(monkeypatch):
     fake_client=SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
         )
-    monkeypatch.setattr("app.llm.client._client_or_raise",lambda:fake_client)
+    monkeypatch.setattr("app.llm.client._client_or_raise",lambda provider=None:fake_client)
     answer=await llm_client.chat(
         [{"role":"user","content":"你好"}],temperature=0.3
         )

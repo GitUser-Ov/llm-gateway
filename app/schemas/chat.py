@@ -22,6 +22,10 @@ class ChatResponse(BaseModel):
     answer:str
     model:str
     from_cache:bool=Field(False,description="本次回答是否来自缓存")
+    degraded:bool=Field(False,description="本次回答是否为上游故障时的降级文案")
+    upstream:str=Field("",description="实际服务本次请求的上游名称")
+    prompt_tokens:int=Field(0,description="输入 token 数（缓存命中或降级时为 0）")
+    completion_tokens:int=Field(0,description="输出 token 数")
 
     
 

@@ -30,6 +30,8 @@ class MessageOut(BaseModel):
     role:str=Field(description="user或assistant")
     content:str
     created_at:datetime
+    prompt_tokens:int=Field(0,description="输入 token 数（用量计量）")
+    completion_tokens:int=Field(0,description="输出 token 数（用量计量）")
 
 class ConversationDetail(ConversationOut):
     messages:list[MessageOut]=[]

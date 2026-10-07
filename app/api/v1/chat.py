@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from app.api.deps import CurrentUserDep, DbDep, SettingsDep
 from app.core.errors import UpstreamError
+from app.llm.client import Usage
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services import chat_service as svc
 from app.api.deps import CurrentUserDep,DbDep,RateLimitDep,QuotaDep,SettingsDep,RedisDep
@@ -25,12 +26,17 @@ async def chat(
         temperature=req.temperature,
         redis=redis,
     )
+    usage = result.usage
     return ChatResponse(
         conversation_id=result.conversation.id,
         message_id=result.message.id,
         answer=result.message.content,
-        model=settings.llm_model,
-        from_cache=result.from_cache
+        model=(usage.model if usage and usage.model else settings.primary_model),
+        from_cache=result.from_cache,
+        degraded=result.degraded,
+        upstream=usage.upstream if usage else "",
+        prompt_tokens=usage.prompt_tokens if usage else 0,
+        completion_tokens=usage.completion_tokens if usage else 0,
     )
 
 def sse(payload: dict) -> str:
@@ -47,8 +53,9 @@ async def stream_generator(
     yield sse({"type": "meta", "conversation_id": conv_id})
     parts: list[str] = []
     failed = False
+    usage = Usage()          # ★ 本次流的用量，就地累加
     try:
-        async for delta in svc.stream_answer(conv_id, messages, temperature):
+        async for delta in svc.stream_answer(conv_id, messages, temperature, usage):
             parts.append(delta)
             yield sse({"type": "delta", "content": delta})
     except UpstreamError as exc:
@@ -65,7 +72,7 @@ async def stream_generator(
         yield sse({"type": "error", "code": "empty_answer", "message": "模型没有返回内容"})
         return
     try:
-        message_id = await svc.persist_assistant_message(conv_id, answer)
+        message_id = await svc.persist_assistant_message(conv_id, answer, usage)
     except Exception:
         logger.exception("保存回答失败 conversation_id=%s", conv_id)
         yield sse({"type": "error", "code": "persist_failed", "message": "回答保存失败"})
@@ -75,6 +82,10 @@ async def stream_generator(
         "conversation_id": conv_id,
         "message_id": message_id,
         "degraded": failed,
+        "upstream": usage.upstream,
+        "model": usage.model,
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
     })
 
 @router.post("/stream", summary="流式问答（SSE）")

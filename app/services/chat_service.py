@@ -21,6 +21,7 @@ class AnswerResult:
     message:Message
     from_cache:bool=False
     degraded:bool=False
+    usage:llm.Usage|None=None
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -77,9 +78,10 @@ async def answer_in_conversation(
     cached:str|None=None
     if use_cache:
         cached=await answer_cache.get_answer(
-            redis,messages,settings.llm_model,temperature
+            redis,messages,settings.primary_model,temperature
         )
 
+    usage=llm.Usage()
     if cached is not None:
         answer=cached
         degraded=False
@@ -89,7 +91,7 @@ async def answer_in_conversation(
         
     # ★ 模型调用失败时，用降级文案顶上，而不是把 502 甩给用户
         try:
-            answer = await llm.chat(messages, temperature=temperature)
+            answer = await llm.chat(messages, temperature=temperature, usage=usage)
             degraded = False
         except UpstreamError:
             logger.exception("模型调用失败，启用降级文案 conversation_id=%s", conv.id)
@@ -97,9 +99,16 @@ async def answer_in_conversation(
             degraded = True
         if use_cache and not degraded:
             await answer_cache.set_answer(
-                redis,messages,settings.llm_model,temperature,answer
+                redis,messages,settings.primary_model,temperature,answer
             )
-    assistant_msg = Message(conversation_id=conv.id, role="assistant", content=answer)
+    assistant_msg = Message(
+        conversation_id=conv.id,
+        role="assistant",
+        content=answer,
+        # ★ 用量计量：只有真正调用过模型才有值，缓存命中和降级都是 0
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+    )
     db.add(assistant_msg)
     conv.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -107,7 +116,16 @@ async def answer_in_conversation(
     await db.refresh(conv)
     logger.info(
         "问答完成",
-        extra={"extra_fields":{"conversation_id":conv.id,"from_cache":from_cache,"degraded":degraded}},
+        extra={"extra_fields":{
+            "conversation_id":conv.id,
+            "from_cache":from_cache,
+            "degraded":degraded,
+            "upstream":usage.upstream,
+            "model":usage.model,
+            "prompt_tokens":usage.prompt_tokens,
+            "completion_tokens":usage.completion_tokens,
+            "fallbacks":usage.fallbacks,
+        }},
     )
     if degraded:
         logger.warning("本次回答为降级结果 conversation_id=%s", conv.id)
@@ -115,7 +133,8 @@ async def answer_in_conversation(
         conversation=conv,
         message=assistant_msg,
         from_cache=from_cache,
-        degraded=degraded
+        degraded=degraded,
+        usage=usage,
     )
 
 # ---------------------------------------------------------------
@@ -137,10 +156,18 @@ async def prepare_turn(
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
     return conv.id, messages
 
-async def persist_assistant_message(conversation_id: int, content: str) -> int:
+async def persist_assistant_message(
+    conversation_id: int, content: str, usage: llm.Usage | None = None
+) -> int:
     """流结束后，用一个独立的短会话把回答写进数据库。返回消息 id。"""
     async with SessionLocal() as db:
-        msg = Message(conversation_id=conversation_id, role="assistant", content=content)
+        msg = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=content,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+        )
         db.add(msg)
         conv = await db.get(Conversation, conversation_id)
         if conv is not None:
@@ -150,13 +177,15 @@ async def persist_assistant_message(conversation_id: int, content: str) -> int:
         return msg.id
 
 async def stream_answer(
-    conv_id: int, messages: list[dict], temperature: float
+    conv_id: int, messages: list[dict], temperature: float,
+    usage: llm.Usage | None = None,
 ):
     """流式生成器：逐段产出 SSE 需要的文本增量。
     这个生成器**只负责模型调用和降级**，SSE 的包装在 api 层做。
+    用量就地累加到传入的 usage 对象上（同一个请求内是同一个对象）。
     """
     try:
-        async for delta in llm.stream_chat(messages, temperature=temperature):
+        async for delta in llm.stream_chat(messages, temperature=temperature, usage=usage):
             yield delta
     except UpstreamError:
         logger.exception("流式调用失败，启用降级文案 conversation_id=%s", conv_id)
